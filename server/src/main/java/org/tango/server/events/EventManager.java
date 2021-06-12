@@ -24,9 +24,6 @@
  */
 package org.tango.server.events;
 
-import com.google.common.collect.Collections2;
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import fr.esrf.Tango.*;
@@ -36,6 +33,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.ext.XLogger;
 import org.slf4j.ext.XLoggerFactory;
 import org.tango.client.database.DatabaseFactory;
+import org.tango.network.NetworkUtils;
 import org.tango.server.ServerManager;
 import org.tango.server.attribute.AttributeImpl;
 import org.tango.server.attribute.ForwardedAttribute;
@@ -47,17 +45,13 @@ import org.tango.utils.DevFailedUtils;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 
-import java.net.InterfaceAddress;
-import java.net.NetworkInterface;
-import java.net.SocketException;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
-import java.util.stream.Collectors;
-
-import static org.tango.orb.ORBManager.OAI_ADDR;
 
 /**
  * Set of ZMQ low level utilities
@@ -100,7 +94,7 @@ public final class EventManager {
     };
 
     private EventManager() {
-        List<String> ipAddresses = getIp4Addresses();
+        List<String> ipAddresses = NetworkUtils.getInstance().getIp4Addresses();
 
         bindEndpoints(createSocket(), ipAddresses, heartbeatEndpoints, SocketType.HEARTBEAT);
         bindEndpoints(createEventSocket(), ipAddresses, eventEndpoints, SocketType.EVENTS);
@@ -201,46 +195,7 @@ public final class EventManager {
         return socket;
     }
 
-    private List<String> getIp4Addresses() {
-        if (OAI_ADDR != null && !OAI_ADDR.isEmpty()) {
-            return Lists.newArrayList(OAI_ADDR);
-        } else {
-            Iterable<NetworkInterface> networkInterfaces = null;
-            try {
-                networkInterfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
-            } catch (SocketException e) {
-                logger.error("Failed to get NICs due to " + e.getMessage(), e);
-                return Collections.emptyList();
-            }
 
-            java.util.function.Predicate<NetworkInterface> filter = networkInterface -> {
-                    try {
-                        return !networkInterface.isLoopback() && !networkInterface.isVirtual() && networkInterface.isUp();
-                    } catch (SocketException e) {
-                        logger.warn("Ignoring NetworkInterface({}) due to an exception: {}", networkInterface.getName(), e);
-                        return false;
-                    }
-                };
-
-                Function<InterfaceAddress, String> interfaceAddressToString = interfaceAddress -> interfaceAddress.getAddress().getHostAddress();
-
-                Iterable<NetworkInterface> filteredNICs = Iterables.filter(networkInterfaces, filter::test);
-
-                List<String> result = Lists.newArrayList();
-            //TODO #17
-                for (NetworkInterface nic : filteredNICs) {
-                    result.addAll(
-                            Collections2.filter(
-                                    nic.getInterfaceAddresses()
-                                            .stream()
-                                            .map(interfaceAddressToString::apply)
-                                            .collect(Collectors.toList()),
-                                    s -> s.split("\\.").length == 4)
-                    );
-                }
-                return result;
-        }
-    }
 
 
     /**

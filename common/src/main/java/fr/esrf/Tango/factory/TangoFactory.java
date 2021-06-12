@@ -48,6 +48,7 @@
 package fr.esrf.Tango.factory;
 
 import fr.esrf.TangoApi.*;
+import org.tango.transport.Transport;
 
 import java.io.BufferedInputStream;
 import java.io.InputStream;
@@ -198,5 +199,9 @@ public class TangoFactory {
 
     public void setDefaultFactory(final boolean isDefaultFactory) {
         this.isDefaultFactory = isDefaultFactory;
+    }
+
+    public Transport newTransport(String targetProtocol) {
+        return tangoFactory.newTransport(targetProtocol);
     }
 }

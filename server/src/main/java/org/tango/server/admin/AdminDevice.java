@@ -55,6 +55,9 @@ import org.tango.server.pipe.PipeImpl;
 import org.tango.server.properties.ClassPropertyImpl;
 import org.tango.server.properties.DevicePropertyImpl;
 import org.tango.server.servant.DeviceImpl;
+import org.tango.server.transport.HttpTransportListener;
+import org.tango.server.transport.TransportManager;
+import org.tango.server.transport.ZmqTransportListener;
 import org.tango.utils.DevFailedUtils;
 import org.tango.utils.TangoUtil;
 
@@ -429,6 +432,7 @@ public final class AdminDevice implements TangoMXBean {
         return pollDevices.toArray(new String[pollDevices.size()]);
     }
 
+
     /**
      * @param dvlsa Lg[0]=Upd period. Str[0]=Device name. Str[1]=Object
      *              type(COMMAND or ATTRIBUTE). Str[2]=Object name
@@ -762,6 +766,34 @@ public final class AdminDevice implements TangoMXBean {
             result = EventManager.getInstance().subscribe(deviceName, attribute, eventType, idlversion);
         }
         return result;
+    }
+
+    private final TransportManager transportManager = new TransportManager();
+
+    {
+        transportManager.registerTransport(new ZmqTransportListener(this));
+        transportManager.registerTransport(new HttpTransportListener(this));
+
+        transportManager.bind();
+        transportManager.listen();
+    }
+
+    @Attribute
+    public String[] getSupportedTransports() {
+        return transportManager.getTransports().toArray(new String[0]);
+    }
+
+    public DeviceImpl getDeviceImpl(String device) {
+        return classList.stream()
+                .map(deviceClassBuilder -> deviceClassBuilder.getDeviceImpl(device))
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElseThrow(() -> new NoSuchElementException(device));
+    }
+
+    @Command(name = "UpgradeProtocol")
+    public String[] upgradeProtocol(String transport) {
+        return transportManager.getEndpoints(transport).toArray(new String[0]);
     }
 
     /**

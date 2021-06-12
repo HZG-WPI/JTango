@@ -36,6 +36,9 @@ package fr.esrf.TangoApi.factory;
 
 import fr.esrf.Tango.factory.ITangoFactory;
 import fr.esrf.TangoApi.*;
+import org.tango.transport.HttpTransport;
+import org.tango.transport.Transport;
+import org.tango.transport.ZmqTransport;
 
 public class DefaultTangoFactoryImpl implements ITangoFactory {
 
@@ -127,5 +130,16 @@ public class DefaultTangoFactoryImpl implements ITangoFactory {
 	{
 		return "TANGORB Default";
 	}
+
+    public Transport newTransport(String targetProtocol) {
+        switch (targetProtocol) {
+            case "zmq":
+                return new ZmqTransport();
+            case "http":
+                return new HttpTransport();
+            default:
+                throw new IllegalArgumentException("Unsupported target transport: " + targetProtocol);
+        }
+    }
 
 }

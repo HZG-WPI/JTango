@@ -48,10 +48,10 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.tango.network.NetworkUtils;
 import org.tango.utils.DevFailedUtils;
 
-import java.io.IOException;
-import java.net.*;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -379,7 +379,7 @@ public class ZmqEventConsumer {
                      logger.debug("{} ---> {}", wrongAdd, lsa.svalue[0]);
                      deviceData = new DeviceData();
                      deviceData.insert(lsa);
-                     isEndpointAvailable(lsa.svalue[0]);
+                     NetworkUtils.getInstance().checkEndpoint(lsa.svalue[0]);
                  }
             }
         } catch (UnknownHostException e) {
@@ -407,7 +407,7 @@ public class ZmqEventConsumer {
                 Observable.fromArray(lsa.svalue).skip(1),
                 ImmutablePair::of
         )
-                .filter(pair -> isEndpointAvailable(pair.left))
+                .filter(pair -> NetworkUtils.getInstance().checkEndpoint(pair.left))
                 .blockingFirst(null))
                 .orElseGet(() -> {
                     DeviceData checkedWithHostAddress = checkWithHostAddress(deviceData, deviceProxy);
@@ -425,26 +425,7 @@ public class ZmqEventConsumer {
         return overridden;
     }
 
-    private boolean isEndpointAvailable(String endpoint) {
-        logger.debug("Check endpoint: {}", endpoint);
-        URI uri = null;
-        try {
-            uri = new URI(endpoint);
-        } catch (URISyntaxException e) {
-            logger.debug("Bad endpoint: " + endpoint, e);
-            return false;
-        }
 
-        //  Try to connect
-        InetSocketAddress ip = new InetSocketAddress(uri.getHost(), uri.getPort());
-        try (Socket socket = new Socket()) {
-            socket.connect(ip, 10);
-            return true;
-        } catch (IOException e) {
-            logger.debug("Failed to connect to " + ip, e);
-            return false;
-        }
-    }
 
     private void checkDeviceConnection(DeviceProxy deviceProxy,
                                        String attribute, DeviceData deviceData, String event_name) throws DevFailed {

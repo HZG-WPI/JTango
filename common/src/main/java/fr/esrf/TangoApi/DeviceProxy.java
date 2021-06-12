@@ -42,11 +42,15 @@ import fr.esrf.TangoApi.events.EventQueue;
 import fr.esrf.TangoDs.Except;
 import fr.esrf.TangoDs.TangoConst;
 import org.omg.CORBA.Request;
+import org.tango.network.NetworkUtils;
+import org.tango.transport.DefaultTransport;
+import org.tango.transport.GsonTangoMessage;
+import org.tango.transport.TangoMessage;
+import org.tango.transport.Transport;
+import org.tango.utils.DevFailedUtils;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Vector;
+import java.io.IOException;
+import java.util.*;
 
 /**
  * Class Description: This class manage device connection for Tango objects. It
@@ -79,6 +83,8 @@ import java.util.Vector;
 public class DeviceProxy extends Connection implements ApiDefs {
 
     private IDeviceProxyDAO deviceProxyDAO = null;
+
+    private final GsonTangoMessage marshaller = new GsonTangoMessage();
 
     static final private boolean check_idl = false;
 
@@ -735,7 +741,26 @@ public class DeviceProxy extends Connection implements ApiDefs {
         deviceProxyDAO.set_attribute_info(this, attr);
     }
 
+    private Transport transport = new DefaultTransport();
+
     // ==========================================================================
+
+    public double readAttributeDouble(String name) throws DevFailed {
+        if (transport.isConnected()) {
+            try {
+                TangoMessage<Double> message = new TangoMessage<>("read", this.get_name(), name, TangoConst.Tango_DEV_DOUBLE, 0D);
+
+                message = marshaller.unmarshal(transport.send(marshaller.marshal(message)));
+
+                return message.value;
+            } catch (IOException e) {
+                throw DevFailedUtils.newDevFailed(e);
+            }
+        } else {
+            return read_attribute(name).extractDouble();
+        }
+    }
+
     /**
      * Read the attribute value for the specified device.
      *
@@ -769,6 +794,21 @@ public class DeviceProxy extends Connection implements ApiDefs {
     public DeviceAttribute[] read_attribute(String[] attnames) throws DevFailed {
         checkDuplication(attnames, "DeviceProxy.read_attribute()");
         return deviceProxyDAO.read_attribute(this, attnames);
+    }
+
+    //TODO extract and decorate
+    public void writeAttribute(String name, double value) throws DevFailed {
+        if (transport.isConnected()) {
+            try {
+                TangoMessage<Double> message = new TangoMessage<>("write", this.get_name(), name, TangoConst.Tango_DEV_DOUBLE, value);
+
+                transport.send(marshaller.marshal(message));
+            } catch (IOException e) {
+                throw DevFailedUtils.newDevFailed(e);
+            }
+        }
+        DeviceAttribute deviceAttribute = new DeviceAttribute(name, value);
+        write_attribute(deviceAttribute);
     }
 
     // ==========================================================================
@@ -1736,6 +1776,26 @@ public class DeviceProxy extends Connection implements ApiDefs {
         return deviceProxyDAO.subscribe_event(this, event, max_size, stateless);
     }
 
+    public void upgradeProtocol(String targetProtocol) throws DevFailed {
+        DeviceData argin = new DeviceData();
+        argin.insert(targetProtocol);
+
+        DeviceData response = this.get_adm_dev().command_inout("UpgradeProtocol", argin);
+
+        String[] array = response.extractStringArray();
+
+        try {
+            String endpoint = Arrays.stream(array)
+                    .filter(NetworkUtils.getInstance()::checkEndpoint)
+                    .findFirst()
+                    .orElseThrow(() -> new IOException("No reachable connection points were found"));
+            transport = TangoFactory.getSingleton().newTransport(targetProtocol);
+            transport.connect(endpoint);
+        } catch (IOException e) {
+            throw DevFailedUtils.newDevFailed(e);
+        }
+    }
+
     // ==========================================================================
     // ==========================================================================
     public void setEventQueue(EventQueue eq) {
@@ -1931,6 +1991,10 @@ public class DeviceProxy extends Connection implements ApiDefs {
      */
     //==========================================================================
     protected void finalize() {
+        try {
+            transport.close();
+        } catch (IOException ignored) {
+        }
         if (proxy_lock_cnt>0) {
             try {
                 unlock();
